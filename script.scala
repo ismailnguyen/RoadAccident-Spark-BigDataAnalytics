@@ -34,3 +34,42 @@ val roadAccidents_cleaned_df = roadAccidents_df.withColumn("_position", split($"
 roadAccidents_cleaned_df.registerTempTable("accidents")
 //Debug
 //sqlContext.sql("select * from accidents").show()
+
+
+// --- Speedcams ---
+
+
+// Create a custom class to represent a speedcam
+case class Speedcam(speed: String, latitude: String, longitude: String)
+
+// Read CSV datas and put onto RDD
+val speedcams_rawDatas = sc.textFile("file:/home/cloudera/workspace/project/datas/F-speedcam.csv")
+//Debug
+//speedcams_rawDatas.collect()
+
+// Split each columns separated by ";"
+val speedcams_splittedDatas = speedcams_rawDatas.map(_.split(" "))
+//Debug
+//speedcams_splittedDatas.collect()
+
+// Map raw datas with Accident class
+val speedcams_mappedDatas = speedcams_splittedDatas.map(s => Speedcam(s(2), s(0), s(1)))
+//Debug
+//speedcams_mappedDatas.collect()
+
+// Convert RDD to DataFrame
+val speedcams_df = speedcams_mappedDatas.toDF()
+//Debug
+//speedcams_df.show()
+//speedcams_df.printSchema()
+
+// Clean values and round position
+val speedcams_cleaned_df = speedcams_df.withColumn("speed", $"speed".replaceAll("@", "")).withColumn("latitude", round($"latitude", 2)).withColumn($"longitude", round($"longitude", 2))
+//Debug
+//speedcams_cleaned_df.show()
+//speedcams_cleaned_df.printSchema()
+
+// Persist cleaned dataframe to sql table
+speedcams_cleaned_df.registerTempTable("speedcams")
+//Debug
+//sqlContext.sql("select * from speedcams").show()
