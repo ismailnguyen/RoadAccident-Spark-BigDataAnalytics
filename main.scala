@@ -64,7 +64,10 @@ val speedcams_df = speedcams_mappedDatas.toDF()
 //speedcams_df.printSchema()
 
 // Clean values and round position
-val speedcams_cleaned_df = speedcams_df.withColumn("speed", $"speed".replaceAll("@", "")).withColumn("latitude", round($"latitude", 2)).withColumn($"longitude", round($"longitude", 2))
+val removeArobase = udf((s : String) => s.replaceAll("@", ""))
+val removeComma = udf((s : String) => s.replaceAll(",", ""))
+
+val speedcams_cleaned_df = speedcams_df.withColumn("latitude", removeComma($"latitude")).withColumn("longitude", removeComma($"longitude")).withColumn("speed", removeArobase($"speed")).withColumn("latitude", round($"latitude", 2)).withColumn("longitude", round($"longitude", 2))
 //Debug
 //speedcams_cleaned_df.show()
 //speedcams_cleaned_df.printSchema()
