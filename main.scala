@@ -4,7 +4,7 @@
 case class Accident(date: String, heure: String, vehicule_type: String, latitude: String, longitude: String)
 
 // Read CSV datas and put onto RDD
-val roadAccidents_rawDatas = sc.textFile("file:/home/cloudera/workspace/project/datas/accidentologie-paris.csv")
+val roadAccidents_rawDatas = sc.textFile("file:/home/cloudera/workspace/project/datas/accidents/accidentologie-paris.csv")
 //Debug
 //roadAccidents_rawDatas.collect()
 
@@ -25,7 +25,7 @@ val roadAccidents_df = roadAccidents_mappedDatas.toDF()
 //roadAccidents_df.printSchema()
 
 // Split location onto latitude and longitude and round position
-val roadAccidents_cleaned_df = roadAccidents_df.withColumn("_position", split($"latitude", ", ")).withColumn("latitude", round($"_position".getItem(0), 2)).withColumn("longitude", round($"_position".getItem(1), 2)).drop("_position")
+val roadAccidents_cleaned_df = roadAccidents_df.withColumn("_position", split($"latitude", ", ")).withColumn("latitude", round($"_position".getItem(0), 2)).withColumn("longitude", round($"_position".getItem(1), 2)).drop("_position").select($"date" as "date", $"heure" as "heure", $"vehicule_type" as "vehicule_type", concat($"latitude", lit(", "), $"longitude") as "position")
 //Debug
 //roadAccidents_cleaned_df.show()
 //roadAccidents_cleaned_df.printSchema()
@@ -43,7 +43,7 @@ roadAccidents_cleaned_df.registerTempTable("accidents")
 case class Speedcam(speed: String, latitude: String, longitude: String)
 
 // Read CSV datas and put onto RDD
-val speedcams_rawDatas = sc.textFile("file:/home/cloudera/workspace/project/datas/F-speedcam.csv")
+val speedcams_rawDatas = sc.textFile("file:/home/cloudera/workspace/project/datas/speedcams/F-speedcam.csv")
 //Debug
 //speedcams_rawDatas.collect()
 
@@ -67,7 +67,7 @@ val speedcams_df = speedcams_mappedDatas.toDF()
 val removeArobase = udf((s : String) => s.replaceAll("@", ""))
 val removeComma = udf((s : String) => s.replaceAll(",", ""))
 
-val speedcams_cleaned_df = speedcams_df.withColumn("latitude", removeComma($"latitude")).withColumn("longitude", removeComma($"longitude")).withColumn("speed", removeArobase($"speed")).withColumn("latitude", round($"latitude", 2)).withColumn("longitude", round($"longitude", 2))
+val speedcams_cleaned_df = speedcams_df.withColumn("latitude", removeComma($"latitude")).withColumn("longitude", removeComma($"longitude")).withColumn("speed", removeArobase($"speed")).withColumn("latitude", round($"latitude", 2)).withColumn("longitude", round($"longitude", 2)).select($"speed" as "speed", concat($"latitude", lit(", "), $"longitude") as "position")
 //Debug
 //speedcams_cleaned_df.show()
 //speedcams_cleaned_df.printSchema()
@@ -76,3 +76,16 @@ val speedcams_cleaned_df = speedcams_df.withColumn("latitude", removeComma($"lat
 speedcams_cleaned_df.registerTempTable("speedcams")
 //Debug
 //sqlContext.sql("select * from speedcams").show()
+
+// Join Accidents table and Speedcams table with locations
+val accidents_join_speedcams_df = roadAccidents_cleaned_df.join(speedcams_cleaned_df, roadAccidents_cleaned_df("position") === speedcams_cleaned_df("position"), "left_outer")
+
+accidents_join_speedcams_df.registerTempTable("accidents_join_speedcams")
+//Debug
+//sqlContext.sql("select * from accidents_join_speedcams where speed <> 'null'").show()
+
+// Training datas
+val trainingData = trainingDataTable.map {
+	val éfeatures = Array[Double](row(3), row(4), row(5))
+	LabeledPoint(row(2), features)
+}
