@@ -66,6 +66,7 @@ val speedcams_df = speedcams_mappedDatas.toDF()
 // Clean values and round position
 val removeArobase = udf((s : String) => s.replaceAll("@", ""))
 val removeComma = udf((s : String) => s.replaceAll(",", ""))
+val isAccident = udf((s : String) => if (s == null || s.isEmpty) 0 else 1)
 
 val speedcams_cleaned_df = speedcams_df.withColumn("latitude", removeComma($"latitude")).withColumn("longitude", removeComma($"longitude")).withColumn("speed", removeArobase($"speed")).withColumn("latitude", round($"latitude", 2)).withColumn("longitude", round($"longitude", 2)).select($"speed" as "speed", concat($"latitude", lit(", "), $"longitude") as "position")
 //Debug
@@ -78,14 +79,16 @@ speedcams_cleaned_df.registerTempTable("speedcams")
 //sqlContext.sql("select * from speedcams").show()
 
 // Join Accidents table and Speedcams table with locations
-val accidents_join_speedcams_df = roadAccidents_cleaned_df.join(speedcams_cleaned_df, roadAccidents_cleaned_df("position") === speedcams_cleaned_df("position"), "left_outer")
+val speedcams_join_accidents_df = speedcams_cleaned_df.alias("s").join(roadAccidents_cleaned_df.alias("a"), speedcams_cleaned_df("position") === roadAccidents_cleaned_df("position"), "left_outer").select($"s.speed", $"s.position", $"a.date", $"a.heure", $"a.vehicule_type", isAccident($"a.vehicule_type") as "is_accident")
 
-accidents_join_speedcams_df.registerTempTable("accidents_join_speedcams")
+speedcams_join_accidents_df.registerTempTable("speedcams_join_accidents")
 //Debug
-//sqlContext.sql("select * from accidents_join_speedcams where speed <> 'null'").show()
+//sqlContext.sql("select * from speedcams_join_accidents where vehicule_type <> 'null'").show()
+
+val trainingDataTable = sqlContext.sql("SELECT speed, position, vehicule_type, date, heure FROM speedcams_join_accidents")
 
 // Training datas
 val trainingData = trainingDataTable.map {
-	val éfeatures = Array[Double](row(3), row(4), row(5))
+	val features = Array[Double](row(3), row(4), row(5))
 	LabeledPoint(row(2), features)
 }
