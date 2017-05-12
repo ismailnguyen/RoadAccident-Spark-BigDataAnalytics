@@ -36,8 +36,34 @@ val roadAccidents_cleaned_df = roadAccidents_df.withColumn("_position", split($"
 //roadAccidents_cleaned_df.show()
 //roadAccidents_cleaned_df.printSchema()
 
+
+// Vehicule types referentiel
+val vehicule_types_df = Seq(
+("null", 0),
+("Tram", 1),
+("PL<=7,5", 2),
+("Scoo50-125", 3),
+("Q>50", 4),
+("Car", 5),
+("VL", 6),
+("Scoo>125", 7),
+("VU", 8),
+("Moto>125", 9),
+("Q<=50", 10),
+("Scoo<=50", 11),
+("Bus", 12),
+("Cyclo", 13),
+("PL>7,5", 14),
+("Voi", 15),
+("PLRemo", 16),
+("Moto50-125", 17),
+("Bicy", 18)
+).toDF("vehicule_type", "vehicule_type_number")
+
+val accidents_df = roadAccidents_cleaned_df.alias("a").join(vehicule_types_df.alias("v"), roadAccidents_cleaned_df("vehicule_type") === vehicule_types_df("vehicule_type"), "inner").select($"a.date", $"a.heure", $"a.vehicule_type", $"v.vehicule_type_number", $"a.position")
+
 // Persist cleaned dataframe to sql table
-roadAccidents_cleaned_df.registerTempTable("accidents")
+accidents_df.registerTempTable("accidents")
 //Debug
 //sqlContext.sql("select * from accidents").show()
 
@@ -85,7 +111,7 @@ speedcams_cleaned_df.registerTempTable("speedcams")
 //sqlContext.sql("select * from speedcams").show()
 
 // Join Accidents table and Speedcams table with locations
-val speedcams_join_accidents_df = speedcams_cleaned_df.alias("s").join(roadAccidents_cleaned_df.alias("a"), speedcams_cleaned_df("position") === roadAccidents_cleaned_df("position"), "left_outer").select($"s.speed", $"s.position", $"a.date", $"a.heure", $"a.vehicule_type", isAccident($"a.vehicule_type") as "is_accident", $"s.latitude", $"s.longitude")
+val speedcams_join_accidents_df = speedcams_cleaned_df.alias("s").join(accidents_df.alias("a"), speedcams_cleaned_df("position") === accidents_df("position"), "left_outer").select($"s.speed", $"s.position", $"a.date", $"a.heure", $"a.vehicule_type", $"a.vehicule_type_number", isAccident($"a.vehicule_type") as "is_accident", $"s.latitude", $"s.longitude")
 
 speedcams_join_accidents_df.registerTempTable("speedcams_join_accidents")
 //Debug
@@ -93,10 +119,10 @@ speedcams_join_accidents_df.registerTempTable("speedcams_join_accidents")
 
 //val trainingData = speedcams_join_accidents_df.select($"is_accident" as "label", concat($"speed", lit(","), $"position") as "features")
 
-val trainingData = speedcams_join_accidents_df.selectExpr("cast(is_accident as double) label", "cast(speed as double) speed", "cast(latitude as double) latitude", "cast(longitude as double) longitude")
+val trainingData = speedcams_join_accidents_df.selectExpr("cast(is_accident as double) label", "cast(speed as double) speed", "cast(vehicule_type_number as double) vehicule_type_number", "cast(latitude as double) latitude", "cast(longitude as double) longitude")
 
 // Training datas
-val assembler = new VectorAssembler().setInputCols(Array("speed", "latitude", "longitude")).setOutputCol("features")
+val assembler = new VectorAssembler().setInputCols(Array("speed", "vehicule_type_number", "latitude", "longitude")).setOutputCol("features")
 val trainingDataVector = assembler.transform(trainingData)
 
 // Instanciation of LinearRegression machine learning
@@ -107,6 +133,9 @@ val lrModel = lr.fit(trainingDataVector)
 
 // Extract the summary from the returned LinearRegression instance trained earlier
 val trainingSummary = lrModel.summary
+
+// Print the coefficients and intercept for linear regression
+println(s"Coefficients: ${lrModel.coefficients} Intercept: ${lrModel.intercept}")
 
 // Obtain the objective per iteration.
 val objectiveHistory = trainingSummary.objectiveHistory
