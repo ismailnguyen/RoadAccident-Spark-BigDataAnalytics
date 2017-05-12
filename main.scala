@@ -3,6 +3,7 @@ import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.ml.feature.VectorAssembler
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.ml.regression.LinearRegression
+import org.apache.spark.mllib.regression.LinearRegressionModel
 
 // --- Accidents ---
 
@@ -141,3 +142,26 @@ println(s"Coefficients: ${lrModel.coefficients} Intercept: ${lrModel.intercept}"
 val objectiveHistory = trainingSummary.objectiveHistory
 println("objectiveHistory:")
 objectiveHistory.foreach(loss => println(loss))
+
+
+val training = trainingDataVector.map(row => {
+	val features = Array[Double](row.getAs[Double](1), row.getAs[Double](2), row.getAs[Double](3), row.getAs[Double](3))
+	LabeledPoint(row.getAs[Double](0), Vectors.dense(features))
+	
+})
+
+val model = SVMWithSGD.train(training, 100)
+val scoreAndLabels = training.map { point =>
+  val score = model.predict(point.features)
+  (score, point.label)
+}
+
+// Get evaluation metrics.
+val metrics = new BinaryClassificationMetrics(scoreAndLabels)
+val auROC = metrics.areaUnderROC()
+
+println("Area under ROC = " + auROC)
+
+// Save and load model
+model.save(sc, "target/tmp/roadAccidentsPerSpeedcamPredictionModel")
+val sameModel = SVMModel.load(sc, "target/tmp/roadAccidentsPerSpeedcamPredictionModel")
