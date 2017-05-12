@@ -1,3 +1,9 @@
+// Libraries for ML trainings
+import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.ml.regression.LinearRegression
+
 // --- Accidents ---
 
 // Create a custom class to represent an accident
@@ -68,7 +74,7 @@ val removeArobase = udf((s : String) => s.replaceAll("@", ""))
 val removeComma = udf((s : String) => s.replaceAll(",", ""))
 val isAccident = udf((s : String) => if (s == null || s.isEmpty) 0 else 1)
 
-val speedcams_cleaned_df = speedcams_df.withColumn("latitude", removeComma($"latitude")).withColumn("longitude", removeComma($"longitude")).withColumn("speed", removeArobase($"speed")).withColumn("latitude", round($"latitude", 2)).withColumn("longitude", round($"longitude", 2)).select($"speed" as "speed", concat($"latitude", lit(", "), $"longitude") as "position")
+val speedcams_cleaned_df = speedcams_df.withColumn("latitude", removeComma($"latitude")).withColumn("longitude", removeComma($"longitude")).withColumn("speed", removeArobase($"speed")).withColumn("latitude", round($"latitude", 2)).withColumn("longitude", round($"longitude", 2)).select($"speed" as "speed", concat($"latitude", lit(", "), $"longitude") as "position", $"latitude" as "latitude", $"longitude" as "longitude")
 //Debug
 //speedcams_cleaned_df.show()
 //speedcams_cleaned_df.printSchema()
@@ -79,16 +85,30 @@ speedcams_cleaned_df.registerTempTable("speedcams")
 //sqlContext.sql("select * from speedcams").show()
 
 // Join Accidents table and Speedcams table with locations
-val speedcams_join_accidents_df = speedcams_cleaned_df.alias("s").join(roadAccidents_cleaned_df.alias("a"), speedcams_cleaned_df("position") === roadAccidents_cleaned_df("position"), "left_outer").select($"s.speed", $"s.position", $"a.date", $"a.heure", $"a.vehicule_type", isAccident($"a.vehicule_type") as "is_accident")
+val speedcams_join_accidents_df = speedcams_cleaned_df.alias("s").join(roadAccidents_cleaned_df.alias("a"), speedcams_cleaned_df("position") === roadAccidents_cleaned_df("position"), "left_outer").select($"s.speed", $"s.position", $"a.date", $"a.heure", $"a.vehicule_type", isAccident($"a.vehicule_type") as "is_accident", $"s.latitude", $"s.longitude")
 
 speedcams_join_accidents_df.registerTempTable("speedcams_join_accidents")
 //Debug
-//sqlContext.sql("select * from speedcams_join_accidents where vehicule_type <> 'null'").show()
+//sqlContext.sql("select * from speedcams_join_accidents where is_accident <> 0").show()
 
-val trainingDataTable = sqlContext.sql("SELECT speed, position, vehicule_type, date, heure FROM speedcams_join_accidents")
+//val trainingData = speedcams_join_accidents_df.select($"is_accident" as "label", concat($"speed", lit(","), $"position") as "features")
+
+val trainingData = speedcams_join_accidents_df.selectExpr("cast(is_accident as double) label", "cast(speed as double) speed", "cast(latitude as double) latitude", "cast(longitude as double) longitude")
 
 // Training datas
-val trainingData = trainingDataTable.map {
-	val features = Array[Double](row(3), row(4), row(5))
-	LabeledPoint(row(2), features)
-}
+val assembler = new VectorAssembler().setInputCols(Array("speed", "latitude", "longitude")).setOutputCol("features")
+val trainingDataVector = assembler.transform(trainingData)
+
+// Instanciation of LinearRegression machine learning
+val lr = new LinearRegression().setMaxIter(10).setRegParam(0.3).setElasticNetParam(0.8)
+
+// Train model
+val lrModel = lr.fit(trainingDataVector)
+
+// Extract the summary from the returned LinearRegression instance trained earlier
+val trainingSummary = lrModel.summary
+
+// Obtain the objective per iteration.
+val objectiveHistory = trainingSummary.objectiveHistory
+println("objectiveHistory:")
+objectiveHistory.foreach(loss => println(loss))
