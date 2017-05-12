@@ -4,6 +4,9 @@ import org.apache.spark.ml.feature.VectorAssembler
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.ml.regression.LinearRegression
 import org.apache.spark.mllib.regression.LinearRegressionModel
+import org.apache.spark.mllib.classification.{SVMModel, SVMWithSGD}
+import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
+import org.apache.spark.mllib.util.MLUtils
 
 // --- Accidents ---
 
@@ -40,6 +43,7 @@ val roadAccidents_cleaned_df = roadAccidents_df.withColumn("_position", split($"
 
 // Vehicule types referentiel
 val vehicule_types_df = Seq(
+(null, 0),
 ("null", 0),
 ("Tram", 1),
 ("PL<=7,5", 2),
@@ -118,16 +122,14 @@ speedcams_join_accidents_df.registerTempTable("speedcams_join_accidents")
 //Debug
 //sqlContext.sql("select * from speedcams_join_accidents where is_accident <> 0").show()
 
-//val trainingData = speedcams_join_accidents_df.select($"is_accident" as "label", concat($"speed", lit(","), $"position") as "features")
-
-val trainingData = speedcams_join_accidents_df.selectExpr("cast(is_accident as double) label", "cast(speed as double) speed", "cast(vehicule_type_number as double) vehicule_type_number", "cast(latitude as double) latitude", "cast(longitude as double) longitude")
-
 // Training datas
+val trainingData = speedcams_join_accidents_df.selectExpr("cast(is_accident as double) label", "cast(speed as double) speed", "coalesce(cast(vehicule_type_number as double), 0) vehicule_type_number", "cast(latitude as double) latitude", "cast(longitude as double) longitude")
+
 val assembler = new VectorAssembler().setInputCols(Array("speed", "vehicule_type_number", "latitude", "longitude")).setOutputCol("features")
 val trainingDataVector = assembler.transform(trainingData)
 
 // Instanciation of LinearRegression machine learning
-val lr = new LinearRegression().setMaxIter(10).setRegParam(0.3).setElasticNetParam(0.8)
+val lr = new LinearRegression().setMaxIter(20).setRegParam(0.3).setElasticNetParam(0.8)
 
 // Train model
 val lrModel = lr.fit(trainingDataVector)
@@ -142,7 +144,6 @@ println(s"Coefficients: ${lrModel.coefficients} Intercept: ${lrModel.intercept}"
 val objectiveHistory = trainingSummary.objectiveHistory
 println("objectiveHistory:")
 objectiveHistory.foreach(loss => println(loss))
-
 
 val training = trainingDataVector.map(row => {
 	val features = Array[Double](row.getAs[Double](1), row.getAs[Double](2), row.getAs[Double](3), row.getAs[Double](3))
